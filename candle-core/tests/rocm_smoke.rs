@@ -53,7 +53,6 @@ mod rocm {
         let d = dev()?;
         let x = Tensor::ones((1,1,4,4), DType::F32, &d)?;
         let w = Tensor::ones((1,1,3,3), DType::F32, &d)?;
-        // (4-3)/1+1 = 2
         assert_eq!(x.conv2d(&w,0,1,1,1)?.dims()[2], 2); Ok(())
     }
     #[test] fn index_select() -> Result<()> {
@@ -78,5 +77,16 @@ mod rocm {
         let x = Tensor::arange(0f32,16f32,&d)?.reshape((1,1,4,4))?.to_dtype(DType::BF16)?;
         let y = x.max_pool2d_with_stride((2,2),(2,2))?.flatten_all()?.to_dtype(DType::F32)?.to_vec1::<f32>()?;
         assert_eq!(y, vec![5.0,7.0,13.0,15.0]); Ok(())
+    }
+    #[test] fn cmp_eq() -> Result<()> {
+        let d = dev()?;
+        let x = Tensor::new(&[1.0f32,2.0,3.0], &d)?;
+        let y = Tensor::new(&[1.0f32,0.0,3.0], &d)?;
+        assert_eq!(x.eq(&y)?.to_dtype(DType::F32)?.to_vec1::<f32>()?, vec![1.0,0.0,1.0]); Ok(())
+    }
+    #[test] fn cmp_lt() -> Result<()> {
+        let d = dev()?;
+        let x = Tensor::new(&[1.0f32,2.0], &d)?;
+        assert_eq!(x.lt(&Tensor::new(&[3.0f32,0.0], &d)?)?.to_dtype(DType::F32)?.to_vec1::<f32>()?, vec![1.0,0.0]); Ok(())
     }
 }
