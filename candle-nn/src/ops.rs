@@ -1115,25 +1115,6 @@ impl candle::CustomOp3 for LayerNorm {
     }
 
 
-    #[cfg(feature = "rocm")]
-    fn rocm_fwd(
-        &self,
-        s1: &candle::RocmStorage,
-        l1: &Layout,
-        s2: &candle::RocmStorage,
-        l2: &Layout,
-        s3: &candle::RocmStorage,
-        l3: &Layout,
-    ) -> Result<(candle::RocmStorage, Shape)> {
-        use candle::backend::BackendStorage;
-        let (cpu_out, shape) = self.cpu_fwd(
-            &s1.to_cpu_storage()?, l1,
-            &s2.to_cpu_storage()?, l2,
-            &s3.to_cpu_storage()?, l3,
-        )?;
-        let dev = s1.device().clone();
-        Ok((dev.storage_from_cpu_storage(&cpu_out)?, shape))
-    }
     #[cfg(feature = "metal")]
     fn metal_fwd(
         &self,
@@ -1290,6 +1271,13 @@ impl candle::CustomOp3 for LayerNorm {
                 candle::rocm_backend::RocmStorageSlice::F64(a),
                 candle::rocm_backend::RocmStorageSlice::F64(b),
             ) => candle::rocm_backend::RocmStorageSlice::F64(
+                S { eps: self.eps }.f(s, l1, a, l2, b, l3, dev)?,
+            ),
+            (
+                candle::rocm_backend::RocmStorageSlice::BF16(s),
+                candle::rocm_backend::RocmStorageSlice::BF16(a),
+                candle::rocm_backend::RocmStorageSlice::BF16(b),
+            ) => candle::rocm_backend::RocmStorageSlice::BF16(
                 S { eps: self.eps }.f(s, l1, a, l2, b, l3, dev)?,
             ),
             _ => candle::bail!(
