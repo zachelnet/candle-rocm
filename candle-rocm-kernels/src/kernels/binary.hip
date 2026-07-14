@@ -11,6 +11,25 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+
+// bf16 storage type matching cast.hip.
+struct __rocm_bf16 {
+    uint16_t __x;
+
+    __device__ __rocm_bf16() : __x(0) {}
+    __device__ __rocm_bf16(float f) {
+        unsigned int u;
+        memcpy(&u, &f, sizeof(u));
+        __x = (uint16_t)(u >> 16);
+    }
+    __device__ operator float() const {
+        float f = 0.0f;
+        unsigned int u = (unsigned int)__x << 16;
+        memcpy(&f, &u, sizeof(f));
+        return f;
+    }
+};
 
 // Helper to check if tensor is contiguous
 __device__ bool is_contiguous(
@@ -135,3 +154,78 @@ BINARY_OP(double, bmaximum_f64, (x > y ? x : y))
 BINARY_OP(uint8_t, bmaximum_u8, (x > y ? x : y))
 BINARY_OP(uint32_t, bmaximum_u32, (x > y ? x : y))
 BINARY_OP(int64_t, bmaximum_i64, (x > y ? x : y))
+
+// ---------------------------------------------------------------------------
+// BF16 variants — __rocm_bf16 arithmetic needs explicit float conversion.
+// ---------------------------------------------------------------------------
+
+#define BINARY_OP_BF16(FN_NAME, EXPR) \
+extern "C" __global__ void FN_NAME( \
+    const size_t numel, \
+    const size_t num_dims, \
+    const size_t *dims_and_strides, \
+    const __rocm_bf16 *lhs, \
+    const __rocm_bf16 *rhs, \
+    __rocm_bf16 *out \
+) { \
+    const size_t *dims = dims_and_strides; \
+    const size_t *lhs_strides = dims_and_strides + 1 * num_dims; \
+    const size_t *rhs_strides = dims_and_strides + 2 * num_dims; \
+    bool lhs_cont = dims_and_strides == nullptr || is_contiguous(num_dims, dims, lhs_strides); \
+    bool rhs_cont = dims_and_strides == nullptr || is_contiguous(num_dims, dims, rhs_strides); \
+    if (lhs_cont && rhs_cont) { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            float x = float(lhs[i]); \
+            float y = float(rhs[i]); \
+            out[i] = __rocm_bf16(EXPR); \
+        } \
+    } else if (lhs_cont) { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            unsigned int tmp_i = i; \
+            unsigned int rhs_i = 0; \
+            for (int d = num_dims - 1; d >= 0; d--) { \
+                unsigned int i_dim = tmp_i % dims[d]; \
+                rhs_i += i_dim * rhs_strides[d]; \
+                tmp_i /= dims[d]; \
+            } \
+            float x = float(lhs[i]); \
+            float y = float(rhs[rhs_i]); \
+            out[i] = __rocm_bf16(EXPR); \
+        } \
+    } else if (rhs_cont) { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            unsigned int tmp_i = i; \
+            unsigned int lhs_i = 0; \
+            for (int d = num_dims - 1; d >= 0; d--) { \
+                unsigned int i_dim = tmp_i % dims[d]; \
+                lhs_i += i_dim * lhs_strides[d]; \
+                tmp_i /= dims[d]; \
+            } \
+            float x = float(lhs[lhs_i]); \
+            float y = float(rhs[i]); \
+            out[i] = __rocm_bf16(EXPR); \
+        } \
+    } else { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            unsigned int tmp_i = i; \
+            unsigned int lhs_i = 0; \
+            unsigned int rhs_i = 0; \
+            for (int d = num_dims - 1; d >= 0; d--) { \
+                unsigned int i_dim = tmp_i % dims[d]; \
+                lhs_i += i_dim * lhs_strides[d]; \
+                rhs_i += i_dim * rhs_strides[d]; \
+                tmp_i /= dims[d]; \
+            } \
+            float x = float(lhs[lhs_i]); \
+            float y = float(rhs[rhs_i]); \
+            out[i] = __rocm_bf16(EXPR); \
+        } \
+    } \
+}
+
+BINARY_OP_BF16(badd_bf16, x + y)
+BINARY_OP_BF16(bsub_bf16, x - y)
+BINARY_OP_BF16(bmul_bf16, x * y)
+BINARY_OP_BF16(bdiv_bf16, x / y)
+BINARY_OP_BF16(bminimum_bf16, (x < y ? x : y))
+BINARY_OP_BF16(bmaximum_bf16, (x > y ? x : y))
