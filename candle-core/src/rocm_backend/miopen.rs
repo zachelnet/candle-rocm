@@ -313,7 +313,7 @@ pub fn conv_transpose2d_forward<T: Copy>(
     let mut conv_desc = ConvolutionDescriptor::new()
         .map_err(|e| crate::Error::Msg(format!("MIOpen conv_desc: {e}")))?;
     conv_desc
-        .init_2d(pad_h as i32, pad_w as i32, stride_h as i32, stride_w as i32, dilation_h as i32, dilation_w as i32)
+        .init_2d(0, pad_h as i32, pad_w as i32, stride_h as i32, stride_w as i32, dilation_h as i32, dilation_w as i32)
         .map_err(|e| crate::Error::Msg(format!("MIOpen init_2d: {e}")))?;
     conv_desc
         .set_transpose_conv_output_padding(out_pad_h as i32, out_pad_w as i32)
