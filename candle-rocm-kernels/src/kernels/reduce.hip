@@ -528,19 +528,119 @@ FAST_OP(double, fast_min_f64, fast_max_f64, fast_argmin_f64, fast_argmax_f64, fa
 FAST_OP(uint32_t, fast_min_u32, fast_max_u32, fast_argmin_u32, fast_argmax_u32, fast_sum_u32)
 FAST_OP(int64_t, fast_min_i64, fast_max_i64, fast_argmin_i64, fast_argmax_i64, fast_sum_i64)
 FAST_OP(uint8_t, fast_min_u8, fast_max_u8, fast_argmin_u8, fast_argmax_u8, fast_sum_u8)
-FAST_OP(__rocm_bf16, fast_min_bf16, fast_max_bf16, fast_argmin_bf16, fast_argmax_bf16, fast_sum_bf16)
 
-// BF16 fast_sum specialization — accumulate in float.
-template <>
-__device__ void fast_sum<__rocm_bf16>(
+// BF16 reduce kernels — accumulate in float to avoid __shared__ issues
+// with the __rocm_bf16 struct.
+
+extern "C" __global__ void fast_argmin_bf16(
+    const size_t src_numel, const size_t el_to_sum_per_block,
+    const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
+    uint32_t *dst) {
+    const size_t *dims = info; const size_t *strides = info + num_dims;
+    __shared__ float shr_val[BLOCK_SIZE];
+    __shared__ uint32_t shr_idx[BLOCK_SIZE];
+    size_t tid = threadIdx.x, dst_id = blockIdx.x;
+    shr_val[tid] = INFINITY; shr_idx[tid] = 0;
+    size_t start_idx = dst_id * el_to_sum_per_block;
+    size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
+    size_t idx = start_idx + tid;
+    while (idx < stop_idx) {
+        size_t strided_i = get_strided_index(idx, num_dims, dims, strides);
+        float v = float(src[strided_i]);
+        if (v < shr_val[tid]) { shr_val[tid] = v; shr_idx[tid] = (uint32_t)idx; }
+        idx += blockDim.x;
+    }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        __syncthreads();
+        if (tid < s && shr_val[tid + s] < shr_val[tid]) {
+            shr_val[tid] = shr_val[tid + s]; shr_idx[tid] = shr_idx[tid + s];
+        }
+    }
+    if (tid == 0) dst[dst_id] = shr_idx[0];
+}
+
+extern "C" __global__ void fast_argmax_bf16(
+    const size_t src_numel, const size_t el_to_sum_per_block,
+    const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
+    uint32_t *dst) {
+    const size_t *dims = info; const size_t *strides = info + num_dims;
+    __shared__ float shr_val[BLOCK_SIZE];
+    __shared__ uint32_t shr_idx[BLOCK_SIZE];
+    size_t tid = threadIdx.x, dst_id = blockIdx.x;
+    shr_val[tid] = -INFINITY; shr_idx[tid] = 0;
+    size_t start_idx = dst_id * el_to_sum_per_block;
+    size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
+    size_t idx = start_idx + tid;
+    while (idx < stop_idx) {
+        size_t strided_i = get_strided_index(idx, num_dims, dims, strides);
+        float v = float(src[strided_i]);
+        if (v > shr_val[tid]) { shr_val[tid] = v; shr_idx[tid] = (uint32_t)idx; }
+        idx += blockDim.x;
+    }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        __syncthreads();
+        if (tid < s && shr_val[tid + s] > shr_val[tid]) {
+            shr_val[tid] = shr_val[tid + s]; shr_idx[tid] = shr_idx[tid + s];
+        }
+    }
+    if (tid == 0) dst[dst_id] = shr_idx[0];
+}
+
+extern "C" __global__ void fast_min_bf16(
     const size_t src_numel, const size_t el_to_sum_per_block,
     const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
     __rocm_bf16 *dst) {
-    const size_t *dims = info;
-    const size_t *strides = info + num_dims;
+    const size_t *dims = info; const size_t *strides = info + num_dims;
     __shared__ float shr[BLOCK_SIZE];
-    size_t tid = threadIdx.x;
-    size_t dst_id = blockIdx.x;
+    size_t tid = threadIdx.x, dst_id = blockIdx.x;
+    shr[tid] = INFINITY;
+    size_t start_idx = dst_id * el_to_sum_per_block;
+    size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
+    size_t idx = start_idx + tid;
+    while (idx < stop_idx) {
+        size_t strided_i = get_strided_index(idx, num_dims, dims, strides);
+        float v = float(src[strided_i]);
+        if (v < shr[tid]) shr[tid] = v;
+        idx += blockDim.x;
+    }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        __syncthreads();
+        if (tid < s && shr[tid + s] < shr[tid]) shr[tid] = shr[tid + s];
+    }
+    if (tid == 0) dst[dst_id] = __rocm_bf16(shr[0]);
+}
+
+extern "C" __global__ void fast_max_bf16(
+    const size_t src_numel, const size_t el_to_sum_per_block,
+    const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
+    __rocm_bf16 *dst) {
+    const size_t *dims = info; const size_t *strides = info + num_dims;
+    __shared__ float shr[BLOCK_SIZE];
+    size_t tid = threadIdx.x, dst_id = blockIdx.x;
+    shr[tid] = -INFINITY;
+    size_t start_idx = dst_id * el_to_sum_per_block;
+    size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
+    size_t idx = start_idx + tid;
+    while (idx < stop_idx) {
+        size_t strided_i = get_strided_index(idx, num_dims, dims, strides);
+        float v = float(src[strided_i]);
+        if (v > shr[tid]) shr[tid] = v;
+        idx += blockDim.x;
+    }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        __syncthreads();
+        if (tid < s && shr[tid + s] > shr[tid]) shr[tid] = shr[tid + s];
+    }
+    if (tid == 0) dst[dst_id] = __rocm_bf16(shr[0]);
+}
+
+extern "C" __global__ void fast_sum_bf16(
+    const size_t src_numel, const size_t el_to_sum_per_block,
+    const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
+    __rocm_bf16 *dst) {
+    const size_t *dims = info; const size_t *strides = info + num_dims;
+    __shared__ float shr[BLOCK_SIZE];
+    size_t tid = threadIdx.x, dst_id = blockIdx.x;
     shr[tid] = 0.0f;
     size_t start_idx = dst_id * el_to_sum_per_block;
     size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
