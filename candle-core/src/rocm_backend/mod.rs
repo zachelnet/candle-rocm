@@ -1294,7 +1294,8 @@ impl BackendStorage for RocmStorage {
         let suffix = match self.slice.dtype() {
             DType::F32 => "f32", DType::F64 => "f64", DType::I64 => "i64",
             DType::U8 => "u8", DType::U32 => "u32",
-            DType::BF16 => "bf16", DType::F16 => "f16",
+            DType::BF16 => "bf16",
+            DType::F16 => "f16",
             _ => {
                 // Unsupported dtype for HIP kernel — fall back to CPU.
                 let cpu_l = self.to_cpu_storage()?;

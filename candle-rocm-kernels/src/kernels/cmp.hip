@@ -40,6 +40,7 @@ extern "C" __global__ void FN_NAME( \
     CMP_OP(TYPENAME, NAME##_ge_##NAME, >=)
 
 CMP_OPS(float, f32)
+CMP_OPS(double, f64)
 CMP_OPS(int64_t, i64)
 CMP_OPS(uint8_t, u8)
 CMP_OPS(uint32_t, u32)
