@@ -1,0 +1,50 @@
+[package]
+name = "rocm-rs"
+version = "0.5.2"
+edition = "2024"
+description = "Rust bindings for AMD ROCm libraries"
+license = "MIT"
+repository = "https://github.com/RustNSparks/rocm-rs"
+documentation = "https://docs.rs/rocm-rs"
+readme = "README.md"
+keywords = ["gpu", "rocm", "amd", "hpc", "bindings"]
+categories = ["api-bindings", "external-ffi-bindings"]
+exclude = ["**/kernel_sources"]
+[lib]
+doctest = false
+
+
+[dependencies]
+rocm_smi_lib = { version = "0.3.2", optional = true }
+rocm_kernel_macros = {version = "0.5.1", optional = true}
+paste = "1.0.15"
+
+[build-dependencies]
+bindgen = "0.71.1"
+
+[features]
+default = ["macros", "miopen", "gpu-sort"]
+rocm_smi = ["dep:rocm_smi_lib"]
+miopen = []
+rocprofiler = []
+rocsolver = []
+macros=["dep:rocm_kernel_macros"]
+# Embeds the amdgcn GPU bitonic-sort kernel (built via the rocm_kernel_macros
+# proc-macro). Default-on; turn off for hosts where the kernel's nested
+# nightly+build-std cargo build is unavailable (e.g. Windows/MSVC) — GPU sort
+# then becomes a runtime no-op, which inference workloads never hit.
+gpu-sort = ["macros"]
+
+[workspace]
+members = [
+    "src/hip/examples/rust_kernel",
+    "src/hip/examples/rust_kernel_async",
+    "src/hip/examples/saxpy",
+    "src/hip/examples/sort",
+    "src/hip/examples/vector_add",
+    "src/miopen/examples/basic",
+    "src/miopen/examples/multi_tensor",
+    "src/rocblas/examples/basic",
+    "src/rocrand/examples/normal",
+]
+exclude = ["__build_in_kernels_sorting", "kernel_sources"]

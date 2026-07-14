@@ -109,3 +109,6 @@ objc2-foundation = { version = "0.3.1" }
 [profile.release-with-debug]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+rocm-rs = { path = ".patches/rocm-rs-0.5.2" }

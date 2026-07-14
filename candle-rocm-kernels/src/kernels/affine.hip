@@ -70,3 +70,29 @@ AFFINE_OP(double, affine_f64)
 AFFINE_OP(uint8_t, affine_u8)
 AFFINE_OP(uint32_t, affine_u32)
 AFFINE_OP(int64_t, affine_i64)
+
+// BF16 needs explicit float conversion — __hip_bfloat16 doesn't support
+// arithmetic operators directly in HIP.
+extern "C" __global__ void affine_bf16(
+    const size_t numel,
+    const size_t num_dims,
+    const size_t *info,
+    const __hip_bfloat16 *inp,
+    __hip_bfloat16 *out,
+    const __hip_bfloat16 mul,
+    const __hip_bfloat16 add
+) {
+    const float mul_f = float(mul);
+    const float add_f = float(add);
+    if (info == nullptr || is_contiguous(num_dims, info, info + num_dims)) {
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) {
+            out[i] = __hip_bfloat16(float(inp[i]) * mul_f + add_f);
+        }
+    } else {
+        const size_t *strides = info + num_dims;
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) {
+            unsigned int src_i = get_strided_index(i, num_dims, info, strides);
+            out[i] = __hip_bfloat16(float(inp[src_i]) * mul_f + add_f);
+        }
+    }
+}
