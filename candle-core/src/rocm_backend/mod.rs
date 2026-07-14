@@ -436,6 +436,42 @@ macro_rules! dispatch_miopen_conv {
     }};
 }
 
+macro_rules! dispatch_miopen_pool {
+    ($self:expr, $l:expr, $dst_el:expr, $device:expr, $handle:expr, $func:ident, $($arg:expr),* $(,)?) => {{
+        let device = $device.clone();
+        let slice = match &$self.slice {
+            RocmStorageSlice::F32(s) => {
+                let x_ptr = unsafe { s.as_ptr().add($l.start_offset()) } as *mut _;
+                let o = device.alloc_zeros::<f32>($dst_el)?;
+                $func::<f32>($handle, x_ptr, o.as_ptr() as *mut _, $($arg),*)?;
+                RocmStorageSlice::F32(o)
+            }
+            RocmStorageSlice::F16(s) => {
+                let x_ptr = unsafe { s.as_ptr().add($l.start_offset()) } as *mut _;
+                let o = device.alloc_zeros::<f16>($dst_el)?;
+                $func::<f16>($handle, x_ptr, o.as_ptr() as *mut _, $($arg),*)?;
+                RocmStorageSlice::F16(o)
+            }
+            RocmStorageSlice::BF16(s) => {
+                let x_ptr = unsafe { s.as_ptr().add($l.start_offset()) } as *mut _;
+                let o = device.alloc_zeros::<bf16>($dst_el)?;
+                $func::<bf16>($handle, x_ptr, o.as_ptr() as *mut _, $($arg),*)?;
+                RocmStorageSlice::BF16(o)
+            }
+            RocmStorageSlice::F64(s) => {
+                let x_ptr = unsafe { s.as_ptr().add($l.start_offset()) } as *mut _;
+                let o = device.alloc_zeros::<f64>($dst_el)?;
+                $func::<f64>($handle, x_ptr, o.as_ptr() as *mut _, $($arg),*)?;
+                RocmStorageSlice::F64(o)
+            }
+            _ => return Err(crate::Error::Msg(
+                "pool only supports f32, f16, bf16, f64 for ROCm".to_string(),
+            )),
+        };
+        Ok(Self { slice, device })
+    }};
+}
+
 macro_rules! cast_launch {
     ($dev:expr, $grid:expr, $block:expr, $el:expr, $dims_len:expr, $ds_ptr:expr, $src_ptr:expr, $src_dtype:expr, $rust_type:ty, $variant:ident) => {{
         let out = $dev.alloc::<$rust_type>($el)?;
@@ -1528,16 +1564,46 @@ impl BackendStorage for RocmStorage {
         ))
     }
 
-    fn avg_pool2d(&self, _l: &Layout, _k: (usize, usize), _s: (usize, usize)) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "avg_pool2d not yet implemented for ROCm".to_string(),
-        ))
+    fn avg_pool2d(&self, l: &Layout, k: (usize, usize), s: (usize, usize)) -> Result<Self> {
+        use crate::rocm_backend::miopen::pool2d_forward;
+        use rocm_rs::miopen::ffi::miopenPoolingMode_t_miopenPoolingAverage;
+        let device = self.device.clone();
+        let shape = l.shape();
+        let dims = shape.dims();
+        if dims.len() != 4 {
+            crate::bail!("avg_pool2d expects 4-dim input, got {dims:?}")
+        }
+        let (b, c, i_h, i_w) = (dims[0], dims[1], dims[2], dims[3]);
+        let o_h = (i_h - k.0) / s.0 + 1;
+        let o_w = (i_w - k.1) / s.1 + 1;
+        let dst_el = o_h * o_w * b * c;
+        let miopen_handle = device.miopen();
+        dispatch_miopen_pool!(
+            self, l, dst_el, device, &miopen_handle.0, pool2d_forward,
+            b, c, i_h, i_w, o_h, o_w, k.0, k.1, s.0, s.1, 0, 0,
+            miopenPoolingMode_t_miopenPoolingAverage,
+        )
     }
 
-    fn max_pool2d(&self, _l: &Layout, _k: (usize, usize), _s: (usize, usize)) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "max_pool2d not yet implemented for ROCm".to_string(),
-        ))
+    fn max_pool2d(&self, l: &Layout, k: (usize, usize), s: (usize, usize)) -> Result<Self> {
+        use crate::rocm_backend::miopen::pool2d_forward;
+        use rocm_rs::miopen::ffi::miopenPoolingMode_t_miopenPoolingMax;
+        let device = self.device.clone();
+        let shape = l.shape();
+        let dims = shape.dims();
+        if dims.len() != 4 {
+            crate::bail!("max_pool2d expects 4-dim input, got {dims:?}")
+        }
+        let (b, c, i_h, i_w) = (dims[0], dims[1], dims[2], dims[3]);
+        let o_h = (i_h - k.0) / s.0 + 1;
+        let o_w = (i_w - k.1) / s.1 + 1;
+        let dst_el = o_h * o_w * b * c;
+        let miopen_handle = device.miopen();
+        dispatch_miopen_pool!(
+            self, l, dst_el, device, &miopen_handle.0, pool2d_forward,
+            b, c, i_h, i_w, o_h, o_w, k.0, k.1, s.0, s.1, 0, 0,
+            miopenPoolingMode_t_miopenPoolingMax,
+        )
     }
 
     fn upsample_nearest1d(&self, _l: &Layout, _sz: usize) -> Result<Self> {

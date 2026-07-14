@@ -1,5 +1,5 @@
 use rocm_rs::miopen::tensor::{DataType, TensorDescriptor};
-use rocm_rs::miopen::{ConvolutionDescriptor, Handle};
+use rocm_rs::miopen::{ConvolutionDescriptor, Handle, PoolingDescriptor};
 
 pub fn miopen_dtype<T: Copy>() -> DataType {
     if std::any::type_name::<T>().contains("f32") {
@@ -274,6 +274,68 @@ pub fn conv_transpose1d_forward<T: Copy>(
                 e
             ))
         })?;
+    }
+
+    Ok(())
+}
+
+/// Run a 2D pooling (max or average) via MIOpen.
+pub fn pool2d_forward<T: Copy>(
+    handle: &Handle,
+    x_ptr: *mut std::ffi::c_void,
+    y_ptr: *mut std::ffi::c_void,
+    b: usize,
+    c: usize,
+    i_h: usize,
+    i_w: usize,
+    o_h: usize,
+    o_w: usize,
+    k_h: usize,
+    k_w: usize,
+    stride_h: usize,
+    stride_w: usize,
+    pad_h: usize,
+    pad_w: usize,
+    mode: u32,
+) -> std::result::Result<(), crate::Error> {
+    let x_desc = TensorDescriptor::new_4d(miopen_dtype::<T>(), b as i32, c as i32, i_h as i32, i_w as i32)
+        .map_err(|e| crate::Error::Msg(format!("miopen x tensor: {e}")))?;
+    let y_desc = TensorDescriptor::new_4d(miopen_dtype::<T>(), b as i32, c as i32, o_h as i32, o_w as i32)
+        .map_err(|e| crate::Error::Msg(format!("miopen y tensor: {e}")))?;
+
+    let mut pool_desc = PoolingDescriptor::new()
+        .map_err(|e| crate::Error::Msg(format!("miopen pool desc: {e}")))?;
+    pool_desc.set_2d(
+        mode,
+        k_h as i32,
+        k_w as i32,
+        pad_h as i32,
+        pad_w as i32,
+        stride_h as i32,
+        stride_w as i32,
+    ).map_err(|e| crate::Error::Msg(format!("miopen pool set_2d: {e}")))?;
+
+    let alpha: f32 = 1.0;
+    let beta: f32 = 0.0;
+
+    let status = unsafe {
+        rocm_rs::miopen::ffi::miopenPoolingForward(
+            handle.as_raw(),
+            pool_desc.as_raw(),
+            &alpha as *const f32 as *const std::ffi::c_void,
+            x_desc.as_raw(),
+            x_ptr,
+            &beta as *const f32 as *const std::ffi::c_void,
+            y_desc.as_raw(),
+            y_ptr,
+            false,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+
+    if status != rocm_rs::miopen::ffi::miopenStatus_t_miopenStatusSuccess {
+        return Err(crate::Error::Msg(format!("miopenPoolingForward failed: {status}")));
     }
 
     Ok(())
