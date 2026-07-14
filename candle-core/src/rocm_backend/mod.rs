@@ -1628,7 +1628,7 @@ impl BackendStorage for RocmStorage {
         ))
     }
 
-    fn upsample_nearest2d(&self, l: &Layout, out_w: usize, out_h: usize) -> Result<Self> {
+    fn upsample_nearest2d(&self, l: &Layout, out_h: usize, out_w: usize) -> Result<Self> {
         // Fall back to CPU — the GPU kernel for this op has not been ported yet.
         let cpu = self.to_cpu_storage()?;
         let cpu_out = cpu.upsample_nearest2d(l, out_h, out_w)?;
