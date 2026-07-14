@@ -664,10 +664,12 @@ SOFTMAX_OP(double, double, softmax_f64)
 // RmsNorm kernels
 RMSNORM_OP(float, rmsnorm_f32)
 RMSNORM_OP(double, rmsnorm_f64)
+RMSNORM_OP(__rocm_bf16, rmsnorm_bf16)
 
 // LayerNorm kernels
 LAYERNORM_OP(float, layernorm_f32)
 LAYERNORM_OP(double, layernorm_f64)
+LAYERNORM_OP(__rocm_bf16, layernorm_bf16)
 
 // Half-precision types support (HIP uses __half for f16 and hip_bfloat16 for bf16)
 #ifdef __HIPCC__
