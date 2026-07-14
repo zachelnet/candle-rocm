@@ -1287,56 +1287,12 @@ impl BackendStorage for RocmStorage {
     }
 
     fn cmp(&self, op: CmpOp, rhs: &Self, l1: &Layout, l2: &Layout) -> Result<Self> {
-        let op_name = match op {
-            CmpOp::Eq => "eq", CmpOp::Ne => "ne", CmpOp::Le => "le",
-            CmpOp::Ge => "ge", CmpOp::Lt => "lt", CmpOp::Gt => "gt",
-        };
-        let suffix = match self.slice.dtype() {
-            DType::F32 => "f32", DType::F64 => "f64", DType::I64 => "i64",
-            DType::U8 => "u8", DType::U32 => "u32",
-            DType::BF16 => "bf16",
-            DType::F16 => "f16",
-            _ => {
-                // Unsupported dtype for HIP kernel — fall back to CPU.
-                let cpu_l = self.to_cpu_storage()?;
-                let cpu_r = rhs.to_cpu_storage()?;
-                let cpu_out = cpu_l.cmp(op, &cpu_r, l1, l2)?;
-                let dev = self.device.clone();
-                let slice = dev.storage_from_cpu_storage(&cpu_out)?;
-                return Ok(Self { slice: slice.slice, device: dev });
-            }
-        };
-        let func_name = format!("{suffix}_{op_name}_{suffix}");
-        let shape = l1.shape();
-        let el = shape.elem_count();
-        let (grid, block) = launch_config(el);
-        let dev = self.device.clone();
-
-        // Get typed pointers to lhs and rhs data
-        let (lhs_ptr, rhs_ptr) = unsafe {
-            (self.slice.offset_ptr(l1.start_offset()),
-             rhs.slice.offset_ptr(l2.start_offset()))
-        };
-        let out = dev.alloc::<u8>(el)?;
-        let mut out_ptr = out.as_ptr() as *mut std::ffi::c_void;
-
-        unsafe {
-            launch_kernel(
-                &dev,
-                candle_rocm_kernels::kernel::CmpKernel::NAME,
-                candle_rocm_kernels::kernel::CmpKernel::CODE,
-                &func_name,
-                grid, block,
-                &mut [
-                    &el as *const usize as *mut std::ffi::c_void,
-                    &lhs_ptr as *const *mut std::ffi::c_void as *mut std::ffi::c_void,
-                    &rhs_ptr as *const *mut std::ffi::c_void as *mut std::ffi::c_void,
-                    (&mut out_ptr) as *mut *mut std::ffi::c_void as *mut std::ffi::c_void,
-                ],
-            )?;
-        }
-
-        Ok(Self { slice: RocmStorageSlice::U8(out), device: dev })
+        let cpu_l = self.to_cpu_storage()?;
+        let cpu_r = rhs.to_cpu_storage()?;
+        let cpu_out = cpu_l.cmp(op, &cpu_r, l1, l2)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn to_dtype(&self, layout: &Layout, dtype: DType) -> Result<Self> {
