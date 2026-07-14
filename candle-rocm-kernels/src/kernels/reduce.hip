@@ -8,15 +8,20 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include <string.h>
 #include <limits>
 #include <math.h>
 
 struct __rocm_bf16 {
     uint16_t __x;
     __device__ __rocm_bf16() : __x(0) {}
-    __device__ __rocm_bf16(float f) { unsigned int u; memcpy(&u, &f, sizeof(u)); __x = (uint16_t)(u >> 16); }
-    __device__ operator float() const { float f = 0.0f; unsigned int u = (unsigned int)__x << 16; memcpy(&f, &u, sizeof(f)); return f; }
+    __device__ __rocm_bf16(float f) {
+        union { float f; uint16_t u[2]; } c = {f};
+        __x = c.u[1];
+    }
+    __device__ operator float() const {
+        union { uint16_t u[2]; float f; } c = {{0, __x}};
+        return c.f;
+    }
 };
 
 const int BLOCK_SIZE = 1024;
