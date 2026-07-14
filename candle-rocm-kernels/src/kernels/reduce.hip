@@ -8,8 +8,16 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <limits>
 #include <math.h>
+
+struct __rocm_bf16 {
+    uint16_t __x;
+    __device__ __rocm_bf16() : __x(0) {}
+    __device__ __rocm_bf16(float f) { unsigned int u; memcpy(&u, &f, sizeof(u)); __x = (uint16_t)(u >> 16); }
+    __device__ operator float() const { float f = 0.0f; unsigned int u = (unsigned int)__x << 16; memcpy(&f, &u, sizeof(f)); return f; }
+};
 
 const int BLOCK_SIZE = 1024;
 const int WARP_SIZE = 32;
@@ -52,6 +60,16 @@ __device__ __forceinline__ uint32_t reduce_init_highest<uint32_t>() {
 template <>
 __device__ __forceinline__ uint8_t reduce_init_highest<uint8_t>() {
     return std::numeric_limits<uint8_t>::max();
+}
+
+template <>
+__device__ __forceinline__ __rocm_bf16 reduce_init_lowest<__rocm_bf16>() {
+    return __rocm_bf16(-INFINITY);
+}
+
+template <>
+__device__ __forceinline__ __rocm_bf16 reduce_init_highest<__rocm_bf16>() {
+    return __rocm_bf16(INFINITY);
 }
 
 __device__ bool is_contiguous(
@@ -505,6 +523,34 @@ FAST_OP(double, fast_min_f64, fast_max_f64, fast_argmin_f64, fast_argmax_f64, fa
 FAST_OP(uint32_t, fast_min_u32, fast_max_u32, fast_argmin_u32, fast_argmax_u32, fast_sum_u32)
 FAST_OP(int64_t, fast_min_i64, fast_max_i64, fast_argmin_i64, fast_argmax_i64, fast_sum_i64)
 FAST_OP(uint8_t, fast_min_u8, fast_max_u8, fast_argmin_u8, fast_argmax_u8, fast_sum_u8)
+FAST_OP(__rocm_bf16, fast_min_bf16, fast_max_bf16, fast_argmin_bf16, fast_argmax_bf16, fast_sum_bf16)
+
+// BF16 fast_sum specialization — accumulate in float.
+template <>
+__device__ void fast_sum<__rocm_bf16>(
+    const size_t src_numel, const size_t el_to_sum_per_block,
+    const size_t num_dims, const size_t *info, const __rocm_bf16 *src,
+    __rocm_bf16 *dst) {
+    const size_t *dims = info;
+    const size_t *strides = info + num_dims;
+    __shared__ float shr[BLOCK_SIZE];
+    size_t tid = threadIdx.x;
+    size_t dst_id = blockIdx.x;
+    shr[tid] = 0.0f;
+    size_t start_idx = dst_id * el_to_sum_per_block;
+    size_t stop_idx = min(start_idx + el_to_sum_per_block, src_numel);
+    size_t idx = start_idx + tid;
+    while (idx < stop_idx) {
+        size_t strided_i = get_strided_index(idx, num_dims, dims, strides);
+        shr[tid] += float(src[strided_i]);
+        idx += blockDim.x;
+    }
+    for (int s = blockDim.x / 2; s > 0; s >>= 1) {
+        __syncthreads();
+        if (tid < s) shr[tid] += shr[tid + s];
+    }
+    if (tid == 0) dst[dst_id] = __rocm_bf16(shr[0]);
+}
 
 // Softmax kernels
 SOFTMAX_OP(float, float, softmax_f32)
