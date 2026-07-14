@@ -67,6 +67,13 @@ impl KernelSource for CastKernel {
     const CODE: &'static str = include_str!("kernels/cast.hip");
 }
 
+/// Comparison operations kernel source
+pub struct CmpKernel;
+impl KernelSource for CmpKernel {
+    const NAME: &'static str = "cmp";
+    const CODE: &'static str = include_str!("kernels/cmp.hip");
+}
+
 /// Binary operation types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryOp {
