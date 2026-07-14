@@ -181,6 +181,10 @@ pub fn dtype_suffix<T: Copy + Send + Sync + 'static>() -> &'static str {
         "u32"
     } else if type_name.contains("i64") {
         "i64"
+    } else if type_name.contains("bf16") {
+        "bf16"
+    } else if type_name.contains("f16") {
+        "f16"
     } else {
         panic!("Unsupported dtype for kernel: {}", type_name)
     }
