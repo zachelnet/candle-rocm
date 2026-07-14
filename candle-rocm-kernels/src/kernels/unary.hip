@@ -8,7 +8,19 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 #include <math.h>
+
+struct __rocm_bf16 {
+    uint16_t __x;
+    __device__ __rocm_bf16() : __x(0) {}
+    __device__ __rocm_bf16(float f) {
+        unsigned int u; memcpy(&u, &f, sizeof(u)); __x = (uint16_t)(u >> 16);
+    }
+    __device__ operator float() const {
+        float f = 0.0f; unsigned int u = (unsigned int)__x << 16; memcpy(&f, &u, sizeof(f)); return f;
+    }
+};
 
 __device__ bool is_contiguous(
     const size_t num_dims,
@@ -162,3 +174,83 @@ UNARY_OP_SCALAR(double, uelu_f64, (x > 0.0 ? x : scalar * (exp(x) - 1.0)))
 
 UNARY_OP_SCALAR(float, upowf_f32, powf(x, scalar))
 UNARY_OP_SCALAR(double, upowf_f64, pow(x, scalar))
+
+// ---------------------------------------------------------------------------
+// BF16 variants — __rocm_bf16 needs float() conversion in expressions.
+// ---------------------------------------------------------------------------
+
+#define UNARY_OP_BF16(FN_NAME, FUNC) \
+extern "C" __global__ void FN_NAME( \
+    const size_t numel, \
+    const size_t num_dims, \
+    const size_t *dims_and_strides, \
+    const __rocm_bf16 *input, \
+    __rocm_bf16 *out \
+) { \
+    const size_t *dims = dims_and_strides; \
+    const size_t *strides = dims_and_strides + num_dims; \
+    bool contiguous = dims_and_strides == nullptr || is_contiguous(num_dims, dims, strides); \
+    if (contiguous) { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            float x = float(input[i]); \
+            out[i] = __rocm_bf16(FUNC); \
+        } \
+    } else { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            unsigned int tmp_i = i; unsigned int src_i = 0; \
+            for (int d = num_dims - 1; d >= 0; d--) { \
+                unsigned int i_dim = tmp_i % dims[d]; src_i += i_dim * strides[d]; tmp_i /= dims[d]; \
+            } \
+            float x = float(input[src_i]); \
+            out[i] = __rocm_bf16(FUNC); \
+        } \
+    } \
+}
+
+#define UNARY_OP_SCALAR_BF16(FN_NAME, FUNC) \
+extern "C" __global__ void FN_NAME( \
+    const size_t numel, \
+    const size_t num_dims, \
+    const size_t *dims_and_strides, \
+    const __rocm_bf16 *input, \
+    __rocm_bf16 *out, \
+    __rocm_bf16 scalar \
+) { \
+    const size_t *dims = dims_and_strides; \
+    const size_t *strides = dims_and_strides + num_dims; \
+    bool contiguous = dims_and_strides == nullptr || is_contiguous(num_dims, dims, strides); \
+    float s = float(scalar); \
+    if (contiguous) { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            float x = float(input[i]); \
+            out[i] = __rocm_bf16(FUNC); \
+        } \
+    } else { \
+        for (unsigned int i = blockIdx.x * blockDim.x + threadIdx.x; i < numel; i += blockDim.x * gridDim.x) { \
+            unsigned int tmp_i = i; unsigned int src_i = 0; \
+            for (int d = num_dims - 1; d >= 0; d--) { \
+                unsigned int i_dim = tmp_i % dims[d]; src_i += i_dim * strides[d]; tmp_i /= dims[d]; \
+            } \
+            float x = float(input[src_i]); \
+            out[i] = __rocm_bf16(FUNC); \
+        } \
+    } \
+}
+
+UNARY_OP_BF16(ucopy_bf16, x)
+UNARY_OP_BF16(urelu_bf16, (x > 0.0f ? x : 0.0f))
+UNARY_OP_BF16(uneg_bf16, -x)
+UNARY_OP_BF16(uabs_bf16, fabsf(x))
+UNARY_OP_BF16(uceil_bf16, ceilf(x))
+UNARY_OP_BF16(ufloor_bf16, floorf(x))
+UNARY_OP_BF16(usqrt_bf16, sqrtf(x))
+UNARY_OP_BF16(uexp_bf16, expf(x))
+UNARY_OP_BF16(ulog_bf16, logf(x))
+UNARY_OP_BF16(usigmoid_bf16, (1.0f / (1.0f + expf(-x))))
+UNARY_OP_BF16(utan_bf16, tanf(x))
+UNARY_OP_BF16(ugelu_bf16, (0.5f * x * (1.0f + erff(x * 0.7071067811865475f))))
+UNARY_OP_BF16(ugelu_erf_bf16, (0.5f * x * (1.0f + erff(x * 0.7071067811865475f))))
+UNARY_OP_BF16(usilu_bf16, (x / (1.0f + expf(-x))))
+UNARY_OP_BF16(uerf_bf16, erff(x))
+UNARY_OP_SCALAR_BF16(uelu_bf16, (x > 0.0f ? x : s * (expf(x) - 1.0f)))
+UNARY_OP_SCALAR_BF16(upowf_bf16, powf(x, s))

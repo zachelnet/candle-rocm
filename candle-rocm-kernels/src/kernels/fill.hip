@@ -8,6 +8,18 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+
+struct __rocm_bf16 {
+    uint16_t __x;
+    __device__ __rocm_bf16() : __x(0) {}
+    __device__ __rocm_bf16(float f) {
+        unsigned int u; memcpy(&u, &f, sizeof(u)); __x = (uint16_t)(u >> 16);
+    }
+    __device__ operator float() const {
+        float f = 0.0f; unsigned int u = (unsigned int)__x << 16; memcpy(&f, &u, sizeof(f)); return f;
+    }
+};
 
 __device__ bool is_contiguous(
     const size_t num_dims,
@@ -78,9 +90,11 @@ FILL_OP(double, fill_f64)
 FILL_OP(uint8_t, fill_u8)
 FILL_OP(uint32_t, fill_u32)
 FILL_OP(int64_t, fill_i64)
+FILL_OP(__rocm_bf16, fill_bf16)
 
 CONST_SET_OP(float, const_set_f32)
 CONST_SET_OP(double, const_set_f64)
 CONST_SET_OP(uint8_t, const_set_u8)
 CONST_SET_OP(uint32_t, const_set_u32)
 CONST_SET_OP(int64_t, const_set_i64)
+CONST_SET_OP(__rocm_bf16, const_set_bf16)
