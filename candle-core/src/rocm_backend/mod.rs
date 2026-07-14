@@ -1286,10 +1286,14 @@ impl BackendStorage for RocmStorage {
         Ok(Self { slice, device })
     }
 
-    fn cmp(&self, _op: CmpOp, _rhs: &Self, _l1: &Layout, _l2: &Layout) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "cmp not yet implemented for ROCm".to_string(),
-        ))
+    fn cmp(&self, op: CmpOp, rhs: &Self, l1: &Layout, l2: &Layout) -> Result<Self> {
+        // Fall back to CPU for comparison ops.
+        let cpu_l = self.to_cpu_storage()?;
+        let cpu_r = rhs.to_cpu_storage()?;
+        let cpu_out = cpu_l.cmp(op, &cpu_r, l1, l2)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn to_dtype(&self, layout: &Layout, dtype: DType) -> Result<Self> {
