@@ -54,7 +54,7 @@ impl candle::CustomOp1 for Sigmoid {
     }
 
     fn cpu_fwd(&self, storage: &CpuStorage, layout: &Layout) -> Result<(CpuStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
 
         fn fwd<T: num_traits::Float>(v: T) -> T {
             (v.neg().exp() + T::one()).recip()
@@ -88,7 +88,7 @@ impl candle::CustomOp1 for Sigmoid {
         storage: &candle::CudaStorage,
         layout: &Layout,
     ) -> Result<(candle::CudaStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         use candle::cuda_backend::cudarc::driver::{
             CudaSlice, DeviceRepr, LaunchConfig, PushKernelArg, ValidAsZeroBits,
         };
@@ -140,7 +140,7 @@ impl candle::CustomOp1 for Sigmoid {
         storage: &candle::RocmStorage,
         layout: &Layout,
     ) -> Result<(candle::RocmStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         use candle::rocm_backend::{
             kernel_name, launch_config, utils::Map1, RocmStorageSlice, SendSyncDeviceMemory,
         };
@@ -249,7 +249,7 @@ impl candle::CustomOp1 for Sigmoid {
         storage: &candle::MetalStorage,
         layout: &Layout,
     ) -> Result<(candle::MetalStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         use candle::MetalError;
         let device = storage.device();
         let dtype = storage.dtype();
@@ -481,7 +481,7 @@ impl candle::CustomOp1 for SoftmaxLastDim {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = storage.device();
         let slice = S.map(&storage.slice, dev, layout)?;
         let dst = candle::cuda_backend::CudaStorage {
@@ -497,7 +497,7 @@ impl candle::CustomOp1 for SoftmaxLastDim {
         storage: &candle::MetalStorage,
         layout: &Layout,
     ) -> Result<(candle::MetalStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let device = storage.device();
         let encoder = device.command_encoder()?;
         encoder.set_label("softmax");
@@ -593,7 +593,7 @@ impl candle::CustomOp1 for SoftmaxLastDim {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = storage.device();
         let slice = match &storage.slice {
             candle::rocm_backend::RocmStorageSlice::F16(s) => {
@@ -636,7 +636,7 @@ impl candle::CustomOp2 for RmsNorm {
         s2: &CpuStorage,
         l2: &Layout,
     ) -> Result<(CpuStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
 
         let eps = self.eps;
         fn inner<
@@ -751,7 +751,7 @@ impl candle::CustomOp2 for RmsNorm {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = s1.device();
         let slice = S { eps: self.eps }.map(&s1.slice, l1, &s2.slice, l2, dev)?;
         let dst = candle::cuda_backend::CudaStorage {
@@ -769,7 +769,7 @@ impl candle::CustomOp2 for RmsNorm {
         s2: &candle::MetalStorage,
         l2: &Layout,
     ) -> Result<(candle::MetalStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let device = s1.device();
         let encoder = device.command_encoder()?;
         encoder.set_label("rmsnorm");
@@ -879,7 +879,7 @@ impl candle::CustomOp2 for RmsNorm {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = s1.device();
         let slice = match (&s1.slice, &s2.slice) {
             (
@@ -904,7 +904,7 @@ impl candle::CustomOp2 for RmsNorm {
                 candle::rocm_backend::RocmStorageSlice::BF16(_),
                 candle::rocm_backend::RocmStorageSlice::BF16(_),
             ) => {
-                use candle::backend::{BackendDevice, BackendStorage};
+                use candle::backend::{BackendDevice as _, BackendStorage};
                 let cpu_out = self.cpu_fwd(
                     &s1.to_cpu_storage()?, l1,
                     &s2.to_cpu_storage()?, l2,
@@ -970,7 +970,7 @@ impl candle::CustomOp3 for LayerNorm {
         s3: &CpuStorage,
         l3: &Layout,
     ) -> Result<(CpuStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
 
         let eps = self.eps;
         fn inner<
@@ -1109,7 +1109,7 @@ impl candle::CustomOp3 for LayerNorm {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = s1.device();
         let slice = S { eps: self.eps }.map(&s1.slice, l1, &s2.slice, l2, &s3.slice, l3, dev)?;
         let dst = candle::cuda_backend::CudaStorage {
@@ -1130,7 +1130,7 @@ impl candle::CustomOp3 for LayerNorm {
         s3: &candle::MetalStorage,
         l3: &Layout,
     ) -> Result<(candle::MetalStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let device = s1.device();
         let encoder = device.command_encoder()?;
         encoder.set_label("layernorm");
@@ -1254,7 +1254,7 @@ impl candle::CustomOp3 for LayerNorm {
             }
         }
 
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         let dev = s1.device();
         let slice = match (&s1.slice, &s2.slice, &s3.slice) {
             (
@@ -1284,7 +1284,7 @@ impl candle::CustomOp3 for LayerNorm {
                 candle::rocm_backend::RocmStorageSlice::BF16(_),
             ) => {
                 // BF16 kernel symbol not available on all gfx targets — use CPU fallback.
-                use candle::backend::{BackendDevice, BackendStorage};
+                use candle::backend::{BackendDevice as _, BackendStorage};
                 let cpu_out = self.cpu_fwd(
                     &s1.to_cpu_storage()?, l1,
                     &s2.to_cpu_storage()?, l2,
@@ -1437,7 +1437,7 @@ impl candle::CustomOp3 for Sdpa {
         v: &candle::MetalStorage,
         v_l: &Layout,
     ) -> Result<(candle::MetalStorage, Shape)> {
-        use candle::backend::{BackendDevice, BackendStorage};
+        use candle::backend::BackendStorage;
         use candle_metal_kernels::SdpaDType;
 
         let device = q.device();
