@@ -1,6 +1,6 @@
 //! Implementation of Backend traits for ROCm device
 //!
-use crate::backend::BackendStorage;
+use crate::backend::{BackendDevice, BackendStorage};
 use crate::op::{BinaryOpT, CmpOp, ReduceOp, UnaryOpT};
 use crate::{CpuStorage, DType, Layout, Result, WithDType};
 pub use candle_rocm_kernels as kernels;
