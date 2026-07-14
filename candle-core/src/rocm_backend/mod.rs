@@ -1427,15 +1427,19 @@ impl BackendStorage for RocmStorage {
 
     fn where_cond(
         &self,
-        _l: &Layout,
-        _a: &Self,
-        _la: &Layout,
-        _b: &Self,
-        _lb: &Layout,
+        l: &Layout,
+        a: &Self,
+        la: &Layout,
+        b: &Self,
+        lb: &Layout,
     ) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "where_cond not yet implemented for ROCm".to_string(),
-        ))
+        let cpu_s = self.to_cpu_storage()?;
+        let cpu_a = a.to_cpu_storage()?;
+        let cpu_b = b.to_cpu_storage()?;
+        let cpu_out = cpu_s.where_cond(l, &cpu_a, la, &cpu_b, lb)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn conv1d(
@@ -1625,10 +1629,12 @@ impl BackendStorage for RocmStorage {
         )
     }
 
-    fn upsample_nearest1d(&self, _l: &Layout, _sz: usize) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "upsample_nearest1d not yet implemented for ROCm".to_string(),
-        ))
+    fn upsample_nearest1d(&self, l: &Layout, sz: usize) -> Result<Self> {
+        let cpu = self.to_cpu_storage()?;
+        let cpu_out = cpu.upsample_nearest1d(l, sz)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn upsample_nearest2d(&self, l: &Layout, out_h: usize, out_w: usize) -> Result<Self> {
@@ -1642,50 +1648,65 @@ impl BackendStorage for RocmStorage {
 
     fn upsample_bilinear2d(
         &self,
-        _l: &Layout,
-        _w: usize,
-        _h: usize,
-        _align: bool,
-        _fh: Option<f64>,
-        _fv: Option<f64>,
+        l: &Layout,
+        w: usize,
+        h: usize,
+        align: bool,
+        fh: Option<f64>,
+        fv: Option<f64>,
     ) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "upsample_bilinear2d not yet implemented for ROCm".to_string(),
-        ))
+        let cpu = self.to_cpu_storage()?;
+        let cpu_out = cpu.upsample_bilinear2d(l, w, h, align, fh, fv)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
-    fn gather(&self, _l: &Layout, _idx: &Self, _il: &Layout, _dim: usize) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "gather not yet implemented for ROCm".to_string(),
-        ))
+    fn gather(&self, l: &Layout, idx: &Self, il: &Layout, dim: usize) -> Result<Self> {
+        let cpu_s = self.to_cpu_storage()?;
+        let cpu_idx = idx.to_cpu_storage()?;
+        let cpu_out = cpu_s.gather(l, &cpu_idx, il, dim)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn scatter_set(
         &mut self,
-        _l: &Layout,
-        _val: &Self,
-        _vl: &Layout,
-        _idx: &Self,
-        _il: &Layout,
-        _dim: usize,
+        l: &Layout,
+        val: &Self,
+        vl: &Layout,
+        idx: &Self,
+        il: &Layout,
+        dim: usize,
     ) -> Result<()> {
-        Err(crate::Error::Msg(
-            "scatter_set not yet implemented for ROCm".to_string(),
-        ))
+        let mut cpu_s = self.to_cpu_storage()?;
+        let cpu_val = val.to_cpu_storage()?;
+        let cpu_idx = idx.to_cpu_storage()?;
+        cpu_s.scatter_set(l, &cpu_val, vl, &cpu_idx, il, dim)?;
+        let device = self.device.clone();
+        let new = device.storage_from_cpu_storage(&cpu_s)?;
+        self.slice = new.slice;
+        Ok(())
     }
 
     fn scatter_add_set(
         &mut self,
-        _l: &Layout,
-        _val: &Self,
-        _vl: &Layout,
-        _idx: &Self,
-        _il: &Layout,
-        _dim: usize,
+        l: &Layout,
+        val: &Self,
+        vl: &Layout,
+        idx: &Self,
+        il: &Layout,
+        dim: usize,
     ) -> Result<()> {
-        Err(crate::Error::Msg(
-            "scatter_add_set not yet implemented for ROCm".to_string(),
-        ))
+        let mut cpu_s = self.to_cpu_storage()?;
+        let cpu_val = val.to_cpu_storage()?;
+        let cpu_idx = idx.to_cpu_storage()?;
+        cpu_s.scatter_add_set(l, &cpu_val, vl, &cpu_idx, il, dim)?;
+        let device = self.device.clone();
+        let new = device.storage_from_cpu_storage(&cpu_s)?;
+        self.slice = new.slice;
+        Ok(())
     }
 
     fn index_select(&self, idx: &Self, src_l: &Layout, ids_l: &Layout, dim: usize) -> Result<Self> {
@@ -1808,16 +1829,20 @@ impl BackendStorage for RocmStorage {
 
     fn index_add(
         &self,
-        _l: &Layout,
-        _idx: &Self,
-        _il: &Layout,
-        _val: &Self,
-        _vl: &Layout,
-        _dim: usize,
+        l: &Layout,
+        idx: &Self,
+        il: &Layout,
+        val: &Self,
+        vl: &Layout,
+        dim: usize,
     ) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "index_add not yet implemented for ROCm".to_string(),
-        ))
+        let cpu_s = self.to_cpu_storage()?;
+        let cpu_idx = idx.to_cpu_storage()?;
+        let cpu_val = val.to_cpu_storage()?;
+        let cpu_out = cpu_s.index_add(l, &cpu_idx, il, &cpu_val, vl, dim)?;
+        let device = self.device.clone();
+        let slice = device.storage_from_cpu_storage(&cpu_out)?;
+        Ok(Self { slice: slice.slice, device })
     }
 
     fn matmul(
