@@ -1554,14 +1554,30 @@ impl BackendStorage for RocmStorage {
 
     fn conv_transpose2d(
         &self,
-        _l: &Layout,
-        _kernel: &Self,
-        _kl: &Layout,
-        _params: &crate::conv::ParamsConvTranspose2D,
+        l: &Layout,
+        kernel: &Self,
+        kernel_l: &Layout,
+        params: &crate::conv::ParamsConvTranspose2D,
     ) -> Result<Self> {
-        Err(crate::Error::Msg(
-            "conv_transpose2d not yet implemented for ROCm".to_string(),
-        ))
+        use crate::rocm_backend::miopen::conv_transpose2d_forward;
+
+        let device = self.device();
+        let miopen_handle = device.miopen();
+        let out_h = params.out_h();
+        let out_w = params.out_w();
+        let dst_el = params.b_size * params.c_out * out_h * out_w;
+
+        dispatch_miopen_conv!(
+            self, kernel, l, kernel_l, dst_el, device, &miopen_handle.0,
+            conv_transpose2d_forward,
+            params.b_size, params.c_in, params.c_out,
+            params.i_h, params.i_w, params.k_h, params.k_w,
+            out_h, out_w,
+            params.padding, params.padding,
+            params.output_padding, params.output_padding,
+            params.stride, params.stride,
+            params.dilation, params.dilation,
+        )
     }
 
     fn avg_pool2d(&self, l: &Layout, k: (usize, usize), s: (usize, usize)) -> Result<Self> {
