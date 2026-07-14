@@ -1,6 +1,0 @@
-/target
-**/target
-**/kernel_sources
-**/__build_in_kernels_sorting
-**/bindings.rs
-*.code-workspace

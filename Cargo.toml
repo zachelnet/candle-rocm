@@ -111,4 +111,4 @@ inherits = "release"
 debug = true
 
 [patch.crates-io]
-rocm-rs = { path = ".patches/rocm-rs-0.5.2" }
+rocm-rs = { git = "https://github.com/zachelnet/rocm-rs", branch = "master" }
